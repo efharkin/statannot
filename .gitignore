@@ -1,5 +1,6 @@
 .ipynb_checkpoints
 __pycache__
+*.pyc
 
 statannot.egg-info/dependency_links.txt
 statannot.egg-info/PKG-INFO
