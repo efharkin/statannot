@@ -2,13 +2,7 @@ import warnings
 
 import numpy as np
 
-import statannot.stats.ComparisonsCorrection as CompCorr
 from statannot.utils import raise_expected_got, assert_is_in
-
-
-def assert_valid_correction_name(name):
-    assert_is_in(name, CompCorr.IMPLEMENTED_METHODS + [None],
-                 label='argument `comparisons_correction`')
 
 
 def check_pval_correction_input_values(p_values, num_comparisons):

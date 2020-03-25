@@ -11,7 +11,6 @@ from .stats.StatResult import StatResult
 from .format_annotations import pval_annotation_text, simple_text
 from .stats.ComparisonsCorrection import get_correction_method
 from .stats.tests import stat_test, IMPLEMENTED_TESTS
-from .stats.utils import assert_valid_correction_name
 from .utils import assert_is_in
 
 DEFAULT = object()
@@ -146,8 +145,7 @@ def add_stat_annotation(ax, plot='boxplot',
     )
 
     # Comparisons correction
-    assert_valid_correction_name(comparisons_correction)
-    comparisons_correction = get_correction_method(comparisons_correction)
+    comparisons_correction = get_correction_method(comparisons_correction)  # Get correction callable from string name TODO make clearer
 
     if verbose >= 1 and text_format == 'star':
         print("p-value annotation legend:")

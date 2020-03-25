@@ -1,38 +1,47 @@
 from .stats.StatResult import StatResult
+from .stats.utils import return_results
 from typing import Union, List
 import numpy as np
 import pandas as pd
 
 
-def pval_annotation_text(result: Union[List[StatResult], StatResult], pvalue_thresholds):
-    single_value = False
+def pval_annotation_text(
+    result: Union[List[StatResult], StatResult], pvalue_thresholds
+):
+    p_values = np.array([res.pval for res in np.atleast_1d(result)])
+    significance_suffixes = [
+        res.significance_suffix for res in np.atleast_1d(result)
+    ]
 
-    if isinstance(result, list):
-        x1_pval = np.array([res.pval for res in result])
-        x1_signif_suff = [res.significance_suffix for res in result]
-    else:
-        x1_pval = np.array([result.pval])
-        x1_signif_suff = [result.significance_suffix]
-        single_value = True
-
-    # Sort the threshold array
-    pvalue_thresholds = pd.DataFrame(pvalue_thresholds).sort_values(by=0, ascending=False).values
-    x_annot = pd.Series(["" for _ in range(len(x1_pval))])
-
+    significance_annotations = pd.Series(["" for _ in range(len(p_values))])
+    pvalue_thresholds = (
+        pd.DataFrame(pvalue_thresholds)
+        .sort_values(by=0, ascending=False)
+        .values
+    )
+    last_p_upper_bound = 1.1
     for i in range(0, len(pvalue_thresholds)):
+        p_upper_bound = pvalue_thresholds[i][0]
+        assert (
+            p_upper_bound < last_p_upper_bound
+        ), 'pvalue_thresholds are not monotonically decreasing'
+        significance_str = pvalue_thresholds[i][1]
 
-        if i < len(pvalue_thresholds) - 1:
-            condition = (x1_pval <= pvalue_thresholds[i][0]) & (pvalue_thresholds[i + 1][0] < x1_pval)
-            x_annot[condition] = pvalue_thresholds[i][1]
+        # Assign the significance label to p-values below upper bound.
+        # Note: if the p-value is also below the next threshold, this will get
+        # overwritten.
+        significance_annotations[p_values <= p_upper_bound] = significance_str
 
-        else:
-            condition = x1_pval < pvalue_thresholds[i][0]
-            x_annot[condition] = pvalue_thresholds[i][1]
+        last_p_upper_bound = p_upper_bound
 
-    x_annot = pd.Series([f"{star}{signif}" for star, signif in zip(x_annot, x1_signif_suff)])
+    significance_annotations_with_suffixes = [
+        f"{star}{signif}"
+        for star, signif in zip(
+            significance_annotations, significance_suffixes
+        )
+    ]
 
-    return x_annot if not single_value else x_annot.iloc[0]
-
+    return return_results(significance_annotations_with_suffixes)
 
 def simple_text(result: StatResult, pvalue_format, pvalue_thresholds, test_short_name=None):
     """
