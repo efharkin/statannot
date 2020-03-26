@@ -1,3 +1,5 @@
+from warnings import warn
+
 import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
 import numpy as np
@@ -252,7 +254,6 @@ def add_stat_annotation(ax, plot='boxplot',
                             [0 for _ in range(len(box_structs))]])
     if loc == 'outside':
         y_stack_arr[1, :] = ylim[1]
-    ann_list = []
     test_result_list = []
     ymaxs = []
     y_stack = []
@@ -307,13 +308,17 @@ def add_stat_annotation(ax, plot='boxplot',
         x2 = box_structs[1]['x']
         xi1 = box_structs[0]['xi']
         xi2 = box_structs[1]['xi']
-        label1 = box_structs[0]['label']
-        label2 = box_structs[1]['label']
-        # ymax1 = box_structs[0]['ymax']  # Not used, so do not assign them
-        # ymax2 = box_structs[1]['ymax']
         i_box_pair = box_structs[0]['i_box_pair']
+
         if verbose >= 1:
-            print("{} v.s. {}: {}".format(label1, label2, result.formatted_output))
+            # Print result of statistical test.
+            print(
+                "{} v.s. {}: {}".format(
+                    box_structs[0]['label'],
+                    box_structs[1]['label'],
+                    result.formatted_output
+                )
+            )
 
         if text_annot_custom is not None:
             text = text_annot_custom[i_box_pair]
@@ -335,9 +340,6 @@ def add_stat_annotation(ax, plot='boxplot',
                                     & (y_stack_arr[0, :] <= x2))])
         ymax_in_range_x1_x2 = y_stack_arr[1, i_ymax_in_range_x1_x2]
 
-        yref = ymax_in_range_x1_x2
-        yref2 = yref
-
         # Choose the best offset depending on whether there is an annotation below
         # at the x position in the range [x1, x2] where the stack is the highest
         if y_stack_arr[2, i_ymax_in_range_x1_x2] == 0:
@@ -346,18 +348,10 @@ def add_stat_annotation(ax, plot='boxplot',
         else:
             # there is an annotation below
             offset = y_offset
-        y = yref2 + offset
+        y = ymax_in_range_x1_x2 + offset
         h = line_height * yrange
         line_x, line_y = [x1, x1, x2, x2], [y, y + h, y + h, y]
-        if loc == 'inside':
-            ax.plot(line_x, line_y, lw=linewidth, c=color)
-        elif loc == 'outside':
-            line = lines.Line2D(line_x, line_y, lw=linewidth, c=color, transform=ax.transData)
-            line.set_clip_on(False)
-            ax.add_line(line)
-
-        # why should we change here the ylim if at the very end we set it to the correct range????
-        # ax.set_ylim((ylim[0], 1.1*(y + h)))
+        ax.plot(line_x, line_y, lw=linewidth, c=color, clip_on=False)
 
         if text is not None:
             ann = ax.annotate(
@@ -365,31 +359,22 @@ def add_stat_annotation(ax, plot='boxplot',
                 xytext=(0, text_offset), textcoords='offset points',
                 xycoords='data', ha='center', va='bottom',
                 fontsize=fontsize, clip_on=False, annotation_clip=False)
-            ann_list.append(ann)
 
-            plt.draw()
-            y_top_annot = None
-            got_mpl_error = False
-            if not use_fixed_offset:
-                try:
-                    bbox = ann.get_window_extent()
-                    bbox_data = bbox.transformed(ax.transData.inverted())
-                    y_top_annot = bbox_data.ymax
-                except RuntimeError:
-                    got_mpl_error = True
+            if use_fixed_offset:
+                y_top_annot = _guess_annotation_top_from_font_size(
+                    y + h + text_offset, 'medium', ax, fig
+                )
+            else:
+                y_top_annot = _get_annotation_top_in_data_coords(ann, ax)
+                if np.isnan(y_top_annot):
+                    warn(
+                        'Cannot get the text bounding box. Falling back to a '
+                        'fixed y offset. Layout may not be optimal.'
+                    )
+                    y_top_annot = _guess_annotation_top_from_font_size(
+                        y + h + text_offset, 'medium', ax, fig
+                    )
 
-            if use_fixed_offset or got_mpl_error:
-                if verbose >= 1:
-                    print("Warning: cannot get the text bounding box. Falling back to a fixed"
-                          " y offset. Layout may be not optimal.")
-                # We will apply a fixed offset in points,
-                # based on the font size of the annotation.
-                fontsize_points = FontProperties(size='medium').get_size_in_points()
-                offset_trans = mtransforms.offset_copy(
-                    ax.transData, fig=fig, x=0,
-                    y=1.0 * fontsize_points + text_offset, units='points')
-                y_top_display = offset_trans.transform((0, y + h))
-                y_top_annot = ax.transData.inverted().transform(y_top_display)[1]
         else:
             y_top_annot = y + h
 
@@ -408,3 +393,23 @@ def add_stat_annotation(ax, plot='boxplot',
         ax.set_ylim((ylim[0], ylim[1]))
 
     return ax, test_result_list
+
+def _get_annotation_top_in_data_coords(annotation, ax):
+    try:
+        plt.draw()
+        bbox = annotation.get_window_extent()
+        bbox_data = bbox.transformed(ax.transData.inverted())
+        annotation_top = bbox_data.ymax
+    except RuntimeError:
+        # Trying to get bbox without a matplotlib renderer results in a RuntimeError
+        annotation_top = np.nan
+    return annotation_top
+
+def _guess_annotation_top_from_font_size(text_baseline, font_size, ax, fig):
+    fontsize_points = FontProperties(size=font_size).get_size_in_points()
+    offset_trans = mtransforms.offset_copy(
+        ax.transData, fig=fig, x=0, y=1.0 * fontsize_points, units='points'
+    )
+    y_top_display = offset_trans.transform((0, text_baseline))
+    y_top_annot = ax.transData.inverted().transform(y_top_display)[1]
+    return y_top_annot
